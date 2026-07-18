@@ -63,3 +63,9 @@ Desktop.ini
 tmp/
 temp/
 *.tmp
+
+# Nx
+.nx/cache
+.nx/workspace-data
+.nx/migrate-runs
+.nx/polygraph

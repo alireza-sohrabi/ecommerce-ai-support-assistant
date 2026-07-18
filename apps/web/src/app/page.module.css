@@ -1,0 +1,43 @@
+.page {
+  align-items: center;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(66, 153, 225, 0.2),
+      transparent 35%
+    ),
+    #08111f;
+  color: #f7fafc;
+  display: flex;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+.introduction {
+  margin: 0 auto;
+  max-width: 48rem;
+}
+
+.eyebrow {
+  color: #63b3ed;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.introduction h1 {
+  font-size: clamp(2.5rem, 7vw, 5rem);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  margin-top: 1rem;
+}
+
+.summary {
+  color: #cbd5e0;
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  line-height: 1.7;
+  margin-top: 1.5rem;
+  max-width: 42rem;
+}
