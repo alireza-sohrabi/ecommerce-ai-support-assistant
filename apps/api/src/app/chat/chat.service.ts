@@ -8,6 +8,7 @@ import OpenAI from 'openai';
 import { OPENAI_CLIENT } from '@api/integrations/openai';
 import { ConfigService } from '@nestjs/config';
 import { APIError } from 'openai';
+import { ChatMessage } from './interface/ChatMessage';
 
 @Injectable()
 export class ChatService {
@@ -18,15 +19,15 @@ export class ChatService {
     private readonly configService: ConfigService,
   ) {}
 
-  async processMessage(message: string): Promise<string> {
+  async processMessage(messages: ChatMessage[]): Promise<string> {
     const model = this.configService.getOrThrow<string>('OPENAI_MODEL');
 
     try {
       const response = await this.openai.responses.create({
         model,
-        input: message,
         instructions:
           'You are a concise and helpful ecommerce customer support assistant.',
+        input: messages,
         max_output_tokens: 300,
       });
 

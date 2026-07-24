@@ -69,7 +69,12 @@ describe('Chat', () => {
       },
       method: 'POST',
       body: JSON.stringify({
-        message: 'Where is my order?',
+        messages: [
+          {
+            role: 'user',
+            content: 'Where is my order?',
+          },
+        ],
       }),
     });
     expect(
@@ -78,6 +83,92 @@ describe('Chat', () => {
     expect(
       (screen.getByLabelText('Message') as HTMLTextAreaElement).value,
     ).toBe('');
+  });
+
+  it('includes previous messages in a follow-up request', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          reply: 'What is your order number?',
+        }),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          reply: 'Your order is being processed.',
+        }),
+      } as unknown as Response);
+
+    render(<Chat />);
+    submitMessage('Where is my order?');
+    await screen.findByText('What is your order number?');
+
+    submitMessage('ORDER-123');
+
+    expect(fetchMock).toHaveBeenLastCalledWith(`${apiBaseUrl}/api/chat`, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'user',
+            content: 'Where is my order?',
+          },
+          {
+            role: 'assistant',
+            content: 'What is your order number?',
+          },
+          {
+            role: 'user',
+            content: 'ORDER-123',
+          },
+        ],
+      }),
+    });
+    expect(
+      await screen.findByText('Your order is being processed.'),
+    ).toBeTruthy();
+  });
+
+  it('limits the request history to 10 messages', async () => {
+    fetchMock.mockImplementation(async (_input, init) => {
+      const requestBody = JSON.parse(String(init?.body)) as {
+        messages: Array<{ content: string; role: 'assistant' | 'user' }>;
+      };
+      const latestMessage = requestBody.messages.at(-1);
+
+      return {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          reply: `Reply to ${latestMessage?.content}`,
+        }),
+      } as unknown as Response;
+    });
+
+    render(<Chat />);
+
+    for (let turn = 1; turn <= 6; turn += 1) {
+      submitMessage(`Question ${turn}`);
+      await screen.findByText(`Reply to Question ${turn}`);
+    }
+
+    const sixthRequest = fetchMock.mock.calls[5]?.[1];
+    const sixthRequestBody = JSON.parse(String(sixthRequest?.body)) as {
+      messages: Array<{ content: string; role: 'assistant' | 'user' }>;
+    };
+
+    expect(sixthRequestBody.messages).toHaveLength(10);
+    expect(sixthRequestBody.messages[0]).toEqual({
+      role: 'assistant',
+      content: 'Reply to Question 1',
+    });
+    expect(sixthRequestBody.messages[9]).toEqual({
+      role: 'user',
+      content: 'Question 6',
+    });
   });
 
   it('shows a loading state while the request is pending', () => {

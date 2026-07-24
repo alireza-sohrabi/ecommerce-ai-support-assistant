@@ -80,14 +80,17 @@ export function Chat() {
     setIsSubmitting(true);
     setErrorMessage(null);
     setDraftMessage('');
-    setMessageList((previousMessages) => [
-      ...previousMessages,
-      {
-        id: `user-${Date.now()}`,
-        role: 'user',
-        content: submittedMessage,
-      },
-    ]);
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: submittedMessage,
+    };
+    const updatedMessageList = [...messageList, userMessage];
+    const messagesForRequest = updatedMessageList
+      .slice(-10)
+      .map(({ role, content }) => ({ role, content }));
+
+    setMessageList(updatedMessageList);
 
     try {
       const response = await fetch(
@@ -98,7 +101,7 @@ export function Chat() {
           },
           method: 'POST',
           body: JSON.stringify({
-            message: submittedMessage,
+            messages: messagesForRequest,
           }),
         },
       );
