@@ -1,37 +1,23 @@
-import { Logger, ServiceUnavailableException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import { OPENAI_CLIENT } from '@api/integrations/openai';
+import { AiApiService } from '../ai-api/ai-api.service';
 import { ChatService } from './chat.service';
 
 describe('ChatService', () => {
   let service: ChatService;
   let testingModule: TestingModule;
 
-  const createResponseMock = jest.fn();
-  const getOrThrowMock = jest.fn();
+  const generateResponseMock = jest.fn();
 
   beforeEach(async () => {
-    createResponseMock.mockResolvedValue({
-      output_text: 'Your order is being processed.',
-    });
-    getOrThrowMock.mockReturnValue('gpt-5.6-luna');
+    generateResponseMock.mockResolvedValue('Your order is being processed.');
 
     testingModule = await Test.createTestingModule({
       providers: [
         ChatService,
         {
-          provide: OPENAI_CLIENT,
+          provide: AiApiService,
           useValue: {
-            responses: {
-              create: createResponseMock,
-            },
-          },
-        },
-        {
-          provide: ConfigService,
-          useValue: {
-            getOrThrow: getOrThrowMock,
+            generateResponse: generateResponseMock,
           },
         },
       ],
@@ -46,7 +32,7 @@ describe('ChatService', () => {
     await testingModule.close();
   });
 
-  it('should return the generated reply using the configured model', async () => {
+  it('should return the generated reply from the AI API', async () => {
     const messages = [
       {
         content: 'Where is my order?',
@@ -63,20 +49,18 @@ describe('ChatService', () => {
     ];
     const reply = await service.processMessage(messages);
 
-    expect(getOrThrowMock).toHaveBeenCalledWith('OPENAI_MODEL');
-    expect(createResponseMock).toHaveBeenCalledWith({
-      model: 'gpt-5.6-luna',
+    expect(generateResponseMock).toHaveBeenCalledWith({
       input: messages,
       instructions:
         'You are a concise and helpful ecommerce customer support assistant.',
-      max_output_tokens: 300,
+      maxOutputTokens: 300,
     });
     expect(reply).toBe('Your order is being processed.');
   });
 
-  it('should throw ServiceUnavailableException when OpenAI fails', async () => {
-    jest.spyOn(Logger.prototype, 'error').mockImplementation();
-    createResponseMock.mockRejectedValueOnce(new Error('OpenAI unavailable'));
+  it('should propagate errors from the AI API', async () => {
+    const error = new Error('AI API unavailable');
+    generateResponseMock.mockRejectedValueOnce(error);
 
     await expect(
       service.processMessage([
@@ -85,6 +69,6 @@ describe('ChatService', () => {
           role: 'user',
         },
       ]),
-    ).rejects.toThrow(ServiceUnavailableException);
+    ).rejects.toBe(error);
   });
 });

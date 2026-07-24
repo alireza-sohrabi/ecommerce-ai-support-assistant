@@ -40,6 +40,8 @@ Create a root `.env` file from `.env.example`, then provide your OpenAI API key 
 ```dotenv
 OPENAI_API_KEY=your-api-key
 OPENAI_MODEL=your-model
+QDRANT_ENDPOINT=http://localhost:6333
+QDRANT_API_KEY=your-qdrant-api-key
 WEB_ORIGIN=http://localhost:3000
 ```
 
@@ -49,7 +51,11 @@ Create `apps/web/.env.local` from `apps/web/.env.example`:
 NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 ```
 
-The OpenAI API key must remain in the root server environment and must never be added to the frontend environment.
+The OpenAI and Qdrant API keys must remain in the root server environment and
+must never be added to the frontend environment. `QDRANT_ENDPOINT` must be an
+absolute HTTP or HTTPS URL. The API validates both Qdrant settings during
+startup; use a dedicated, least-privilege API key for the target Qdrant
+instance.
 
 ## Local development
 
