@@ -12,9 +12,9 @@ A production-oriented AI assistant for e-commerce businesses that helps customer
 
 ## Project status
 
-**Milestone 0 - Repository foundation**
+**Milestone 1 - First model response**
 
-The project is being developed incrementally as a practical AI-engineering portfolio project. See the [project plan](./PROJECT_PLAN.md) for the roadmap, architecture, acceptance criteria, and delivery principles.
+The application now includes a minimal chat interface, a validated NestJS chat endpoint, and a secure server-side OpenAI request. It displays user and assistant messages and provides loading and safe error states. See the [project plan](./PROJECT_PLAN.md) for the roadmap, architecture, acceptance criteria, and delivery principles.
 
 ## Repository structure
 
@@ -32,6 +32,24 @@ Nx manages the applications, task orchestration, and build caching. The frontend
 - npm 11
 
 The repository includes `.nvmrc` and enforces the supported Node.js major version during package installation.
+
+## Environment configuration
+
+Create a root `.env` file from `.env.example`, then provide your OpenAI API key and model:
+
+```dotenv
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL=your-model
+WEB_ORIGIN=http://localhost:3000
+```
+
+Create `apps/web/.env.local` from `apps/web/.env.example`:
+
+```dotenv
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+```
+
+The OpenAI API key must remain in the root server environment and must never be added to the frontend environment.
 
 ## Local development
 
