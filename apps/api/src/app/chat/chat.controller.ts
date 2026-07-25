@@ -11,7 +11,9 @@ export class ChatController {
   async chat(
     @Body() chatRequestDto: ChatRequestDto,
   ): Promise<{ reply: string }> {
-    const reply = await this.chatService.processMessage(chatRequestDto.message);
+    const reply = await this.chatService.processMessage(
+      chatRequestDto.messages,
+    );
 
     return {
       reply,

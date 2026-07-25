@@ -1,10 +1,31 @@
-import { IsNotEmpty, MaxLength, IsString } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsIn,
+  IsNotEmpty,
+  IsString,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
 
-export class ChatRequestDto {
+export class ChatMessageDto {
+  @IsIn(['assistant', 'user'])
+  role!: 'assistant' | 'user';
+
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
   @MaxLength(2000)
-  message!: string;
+  content!: string;
+}
+
+export class ChatRequestDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => ChatMessageDto)
+  messages!: ChatMessageDto[];
 }

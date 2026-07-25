@@ -47,12 +47,26 @@ describe('ChatService', () => {
   });
 
   it('should return the generated reply using the configured model', async () => {
-    const reply = await service.processMessage('Where is my order?');
+    const messages = [
+      {
+        content: 'Where is my order?',
+        role: 'user' as const,
+      },
+      {
+        content: 'What is your order number?',
+        role: 'assistant' as const,
+      },
+      {
+        content: 'ORDER-123',
+        role: 'user' as const,
+      },
+    ];
+    const reply = await service.processMessage(messages);
 
     expect(getOrThrowMock).toHaveBeenCalledWith('OPENAI_MODEL');
     expect(createResponseMock).toHaveBeenCalledWith({
       model: 'gpt-5.6-luna',
-      input: 'Where is my order?',
+      input: messages,
       instructions:
         'You are a concise and helpful ecommerce customer support assistant.',
       max_output_tokens: 300,
@@ -64,8 +78,13 @@ describe('ChatService', () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation();
     createResponseMock.mockRejectedValueOnce(new Error('OpenAI unavailable'));
 
-    await expect(service.processMessage('Where is my order?')).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await expect(
+      service.processMessage([
+        {
+          content: 'Where is my order?',
+          role: 'user',
+        },
+      ]),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 });
