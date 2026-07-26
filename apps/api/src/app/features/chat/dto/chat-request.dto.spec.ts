@@ -54,7 +54,8 @@ describe('ChatRequestDto', () => {
     const dto = plainToInstance(ChatRequestDto, { messages: [message] });
 
     const errors = await validate(dto);
-    const childConstraints = errors[0]?.children?.[0]?.children?.[0]?.constraints;
+    const childConstraints =
+      errors[0]?.children?.[0]?.children?.[0]?.constraints;
 
     expect(childConstraints).toHaveProperty(constraint);
   });

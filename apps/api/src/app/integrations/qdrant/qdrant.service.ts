@@ -5,6 +5,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { QdrantClient } from '@qdrant/js-client-rest';
+import type {
+  StoredVectorPoint,
+  VectorPoint,
+} from '@api/ports/vector-database/vector-database.service';
+import { readRequiredString } from '@api/shared/utils/configuration.util';
 
 @Injectable()
 export class QdrantService {
@@ -13,7 +18,7 @@ export class QdrantService {
 
   constructor(configService: ConfigService) {
     const url = this.readUrl(configService);
-    const apiKey = this.readRequiredValue(configService, 'QDRANT_API_KEY');
+    const apiKey = readRequiredString(configService, 'QDRANT_API_KEY');
 
     this.client = new QdrantClient({
       url,
@@ -35,8 +40,97 @@ export class QdrantService {
     }
   }
 
+  async ensureCollection(
+    collectionName: string,
+    vectorSize: number,
+  ): Promise<void> {
+    const collections = await this.listCollections();
+
+    if (collections.includes(collectionName)) {
+      return;
+    }
+
+    try {
+      await this.client.createCollection(collectionName, {
+        vectors: {
+          size: vectorSize,
+          distance: 'Cosine',
+        },
+      });
+    } catch {
+      this.throwUnavailable('Unable to create Qdrant collection');
+    }
+  }
+
+  async listPoints(collectionName: string): Promise<StoredVectorPoint[]> {
+    const points: StoredVectorPoint[] = [];
+    let offset: number | string | Record<string, unknown> | undefined;
+
+    try {
+      do {
+        const response = await this.client.scroll(collectionName, {
+          limit: 256,
+          offset,
+          with_payload: ['contentHash'],
+          with_vector: false,
+        });
+
+        points.push(
+          ...response.points.map((point) => ({
+            id: point.id,
+            contentHash:
+              typeof point.payload?.contentHash === 'string'
+                ? point.payload.contentHash
+                : undefined,
+          })),
+        );
+        offset = response.next_page_offset ?? undefined;
+      } while (offset !== undefined);
+
+      return points;
+    } catch {
+      this.throwUnavailable('Unable to inspect Qdrant points');
+    }
+  }
+
+  async upsertPoints(
+    collectionName: string,
+    points: VectorPoint[],
+  ): Promise<void> {
+    if (points.length === 0) {
+      return;
+    }
+
+    try {
+      await this.client.upsert(collectionName, {
+        wait: true,
+        points,
+      });
+    } catch {
+      this.throwUnavailable('Unable to upsert Qdrant points');
+    }
+  }
+
+  async deletePoints(
+    collectionName: string,
+    pointIds: Array<number | string>,
+  ): Promise<void> {
+    if (pointIds.length === 0) {
+      return;
+    }
+
+    try {
+      await this.client.delete(collectionName, {
+        wait: true,
+        points: pointIds,
+      });
+    } catch {
+      this.throwUnavailable('Unable to delete stale Qdrant points');
+    }
+  }
+
   private readUrl(configService: ConfigService): string {
-    const value = this.readRequiredValue(configService, 'QDRANT_ENDPOINT');
+    const value = readRequiredString(configService, 'QDRANT_ENDPOINT');
     let parsedUrl: URL;
 
     try {
@@ -56,16 +150,11 @@ export class QdrantService {
     return parsedUrl.toString().replace(/\/$/, '');
   }
 
-  private readRequiredValue(
-    configService: ConfigService,
-    key: 'QDRANT_API_KEY' | 'QDRANT_ENDPOINT',
-  ): string {
-    const value = configService.getOrThrow<string>(key).trim();
+  private throwUnavailable(logMessage: string): never {
+    this.logger.error(logMessage);
 
-    if (!value) {
-      throw new Error(`${key} must not be empty`);
-    }
-
-    return value;
+    throw new ServiceUnavailableException(
+      'Vector database is temporarily unavailable.',
+    );
   }
 }

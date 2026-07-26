@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AiApiService } from '../ai-api/ai-api.service';
+import { AiApiService } from '@api/ports/ai-api/ai-api.service';
 import { ChatService } from './chat.service';
 
 describe('ChatService', () => {

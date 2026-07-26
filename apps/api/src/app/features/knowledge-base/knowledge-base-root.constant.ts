@@ -1,0 +1,1 @@
+export const KNOWLEDGE_BASE_ROOT = Symbol('KNOWLEDGE_BASE_ROOT');

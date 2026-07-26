@@ -9,7 +9,8 @@ import OpenAI, { APIError } from 'openai';
 import type {
   AiApiService,
   GenerateAiResponseRequest,
-} from '../../ai-api/ai-api.service';
+} from '@api/ports/ai-api/ai-api.service';
+import { readRequiredString } from '@api/shared/utils/configuration.util';
 import { OPENAI_CLIENT } from './openai-client.constant';
 
 @Injectable()
@@ -21,10 +22,8 @@ export class OpenAIService implements AiApiService {
     private readonly configService: ConfigService,
   ) {}
 
-  async generateResponse(
-    request: GenerateAiResponseRequest,
-  ): Promise<string> {
-    const model = this.configService.getOrThrow<string>('OPENAI_MODEL');
+  async generateResponse(request: GenerateAiResponseRequest): Promise<string> {
+    const model = readRequiredString(this.configService, 'OPENAI_MODEL');
 
     try {
       const response = await this.client.responses.create({
