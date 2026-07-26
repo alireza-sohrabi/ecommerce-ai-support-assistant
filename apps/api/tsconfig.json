@@ -13,7 +13,10 @@
   "compilerOptions": {
     "esModuleInterop": true,
     "paths": {
-      "@api/integrations/*": ["./src/app/integrations/*"]
+      "@api/features/*": ["./src/app/features/*"],
+      "@api/integrations/*": ["./src/app/integrations/*"],
+      "@api/ports/*": ["./src/app/ports/*"],
+      "@api/shared/*": ["./src/app/shared/*"]
     }
   }
 }

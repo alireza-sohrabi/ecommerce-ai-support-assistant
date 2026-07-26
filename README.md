@@ -26,6 +26,18 @@ apps/
 
 Nx manages the applications, task orchestration, and build caching. The frontend and backend remain independently runnable and deployable.
 
+The API follows a ports-and-adapters structure:
+
+```text
+apps/api/src/app/
+  features/       Business use cases such as chat and knowledge-base ingestion
+  ports/          Provider-neutral AI, embedding, and vector-database contracts
+  integrations/   OpenAI and Qdrant adapters plus runtime port bindings
+```
+
+Features depend on ports, integrations implement ports, and the root application
+module composes both layers.
+
 ## Prerequisites
 
 - Node.js 24
@@ -40,8 +52,11 @@ Create a root `.env` file from `.env.example`, then provide your OpenAI API key 
 ```dotenv
 OPENAI_API_KEY=your-api-key
 OPENAI_MODEL=your-model
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_DIMENSIONS=1536
 QDRANT_ENDPOINT=http://localhost:6333
 QDRANT_API_KEY=your-qdrant-api-key
+KNOWLEDGE_BASE_VECTOR_COLLECTION=knowledge-base
 WEB_ORIGIN=http://localhost:3000
 ```
 
@@ -56,6 +71,11 @@ must never be added to the frontend environment. `QDRANT_ENDPOINT` must be an
 absolute HTTP or HTTPS URL. The API validates both Qdrant settings during
 startup; use a dedicated, least-privilege API key for the target Qdrant
 instance.
+
+`OPENAI_EMBEDDING_DIMENSIONS` must match the vector size used by the
+knowledge-base Qdrant collection. Changing the embedding model or dimensions
+after creating the collection requires a new collection name or an explicit
+collection migration.
 
 ## Local development
 
@@ -78,6 +98,20 @@ npm run dev:api
 ```
 
 The API health endpoint is available at `http://localhost:3001/api/health`.
+
+## Knowledge-base synchronization
+
+Version-controlled Markdown sources live under
+`apps/api/content/knowledge-base/`. To synchronize them with Qdrant:
+
+```bash
+npm run sync:knowledge-base
+```
+
+The command creates the configured collection when necessary, embeds and
+upserts only new or changed chunks, deletes stale points, and prints a concise
+summary. Re-running it with unchanged source files performs no embedding or
+vector writes.
 
 ## Validation
 

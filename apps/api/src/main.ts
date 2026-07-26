@@ -2,11 +2,12 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
 import { ConfigService } from '@nestjs/config';
+import { readRequiredString } from '@api/shared/utils/configuration.util';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
-  const webOrigin = configService.getOrThrow<string>('WEB_ORIGIN');
+  const webOrigin = readRequiredString(configService, 'WEB_ORIGIN');
   const globalPrefix = 'api';
   const port = Number(process.env.PORT ?? 3001);
 

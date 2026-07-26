@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ChatModule } from './chat/chat.module';
+import { ChatModule } from '@api/features/chat/chat.module';
 import { ConfigModule } from '@nestjs/config';
-import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
+import { KnowledgeBaseModule } from '@api/features/knowledge-base/knowledge-base.module';
+import { IntegrationsModule } from '@api/integrations/integrations.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    IntegrationsModule,
     ChatModule,
     KnowledgeBaseModule,
   ],

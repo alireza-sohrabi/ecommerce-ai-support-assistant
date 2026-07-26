@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AiApiService } from '../ai-api/ai-api.service';
+import { AiApiService } from '@api/ports/ai-api/ai-api.service';
 import { ChatMessage } from './interface/ChatMessage';
 
 @Injectable()

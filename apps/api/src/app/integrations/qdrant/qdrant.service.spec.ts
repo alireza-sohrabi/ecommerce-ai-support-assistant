@@ -9,6 +9,10 @@ jest.mock('@qdrant/js-client-rest', () => ({
 
 describe('QdrantService', () => {
   const getCollectionsMock = jest.fn();
+  const createCollectionMock = jest.fn();
+  const scrollMock = jest.fn();
+  const upsertMock = jest.fn();
+  const deleteMock = jest.fn();
   const qdrantClientMock = QdrantClient as jest.MockedClass<
     typeof QdrantClient
   >;
@@ -17,7 +21,11 @@ describe('QdrantService', () => {
     qdrantClientMock.mockImplementation(
       () =>
         ({
+          createCollection: createCollectionMock,
+          delete: deleteMock,
           getCollections: getCollectionsMock,
+          scroll: scrollMock,
+          upsert: upsertMock,
         }) as unknown as QdrantClient,
     );
   });
@@ -82,6 +90,94 @@ describe('QdrantService', () => {
     expect(Logger.prototype.error).toHaveBeenCalledWith(
       'Unable to list Qdrant collections',
     );
+  });
+
+  it('creates a cosine collection when it does not exist', async () => {
+    getCollectionsMock.mockResolvedValue({ collections: [] });
+    const service = createService();
+
+    await service.ensureCollection('knowledge-base', 1536);
+
+    expect(createCollectionMock).toHaveBeenCalledWith('knowledge-base', {
+      vectors: {
+        size: 1536,
+        distance: 'Cosine',
+      },
+    });
+  });
+
+  it('does not recreate an existing collection', async () => {
+    getCollectionsMock.mockResolvedValue({
+      collections: [{ name: 'knowledge-base' }],
+    });
+    const service = createService();
+
+    await service.ensureCollection('knowledge-base', 1536);
+
+    expect(createCollectionMock).not.toHaveBeenCalled();
+  });
+
+  it('scrolls through point hashes without loading vectors', async () => {
+    scrollMock
+      .mockResolvedValueOnce({
+        points: [
+          {
+            id: 'first-id',
+            payload: { contentHash: 'first-hash' },
+          },
+        ],
+        next_page_offset: 'first-id',
+      })
+      .mockResolvedValueOnce({
+        points: [
+          {
+            id: 'second-id',
+            payload: {},
+          },
+        ],
+        next_page_offset: null,
+      });
+    const service = createService();
+
+    await expect(service.listPoints('knowledge-base')).resolves.toEqual([
+      { id: 'first-id', contentHash: 'first-hash' },
+      { id: 'second-id', contentHash: undefined },
+    ]);
+    expect(scrollMock).toHaveBeenNthCalledWith(1, 'knowledge-base', {
+      limit: 256,
+      offset: undefined,
+      with_payload: ['contentHash'],
+      with_vector: false,
+    });
+    expect(scrollMock).toHaveBeenNthCalledWith(2, 'knowledge-base', {
+      limit: 256,
+      offset: 'first-id',
+      with_payload: ['contentHash'],
+      with_vector: false,
+    });
+  });
+
+  it('upserts and deletes points with acknowledged writes', async () => {
+    const service = createService();
+    const points = [
+      {
+        id: 'point-id',
+        vector: [0.1, 0.2],
+        payload: { contentHash: 'hash' },
+      },
+    ];
+
+    await service.upsertPoints('knowledge-base', points);
+    await service.deletePoints('knowledge-base', ['stale-id']);
+
+    expect(upsertMock).toHaveBeenCalledWith('knowledge-base', {
+      wait: true,
+      points,
+    });
+    expect(deleteMock).toHaveBeenCalledWith('knowledge-base', {
+      wait: true,
+      points: ['stale-id'],
+    });
   });
 
   function createService(
