@@ -1,5 +1,4 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable } from '@nestjs/common';
 import { EmbeddingService } from '@api/ports/embedding/embedding.service';
 import {
   createKnowledgeChunkEmbeddingInput,
@@ -10,7 +9,10 @@ import {
   VectorDatabaseService,
   type VectorPoint,
 } from '@api/ports/vector-database/vector-database.service';
-import { readRequiredString } from '@api/shared/utils/configuration.util';
+import {
+  KNOWLEDGE_BASE_SETTINGS,
+  type KnowledgeBaseSettings,
+} from './knowledge-base-settings';
 
 export interface KnowledgeBaseSyncSummary {
   deleted: number;
@@ -26,15 +28,13 @@ export class KnowledgeBaseSyncService {
     private readonly ingestion: KnowledgeBaseIngestionService,
     private readonly embeddingService: EmbeddingService,
     private readonly vectorDatabase: VectorDatabaseService,
-    private readonly configService: ConfigService,
+    @Inject(KNOWLEDGE_BASE_SETTINGS)
+    private readonly settings: KnowledgeBaseSettings,
   ) {}
 
   async synchronize(): Promise<KnowledgeBaseSyncSummary> {
     const chunks = await this.ingestion.prepareChunks();
-    const collectionName = readRequiredString(
-      this.configService,
-      'KNOWLEDGE_BASE_VECTOR_COLLECTION',
-    );
+    const collectionName = this.settings.collectionName;
     const vectorSize = this.embeddingService.getDimensions();
 
     await this.vectorDatabase.ensureCollection(collectionName, vectorSize);

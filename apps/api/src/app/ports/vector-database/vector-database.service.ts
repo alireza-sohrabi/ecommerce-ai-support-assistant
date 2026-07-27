@@ -9,6 +9,12 @@ export interface VectorPoint {
   vector: number[];
 }
 
+export interface VectorSearchResult {
+  id: number | string;
+  payload: Record<string, unknown>;
+  score: number;
+}
+
 export abstract class VectorDatabaseService {
   abstract listCollections(): Promise<string[]>;
 
@@ -28,4 +34,11 @@ export abstract class VectorDatabaseService {
     collectionName: string,
     pointIds: Array<number | string>,
   ): Promise<void>;
+
+  abstract search(
+    collectionName: string,
+    vector: number[],
+    limit: number,
+    scoreThreshold: number,
+  ): Promise<VectorSearchResult[]>;
 }

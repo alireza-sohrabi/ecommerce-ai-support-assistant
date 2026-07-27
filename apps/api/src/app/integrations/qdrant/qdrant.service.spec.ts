@@ -13,6 +13,7 @@ describe('QdrantService', () => {
   const scrollMock = jest.fn();
   const upsertMock = jest.fn();
   const deleteMock = jest.fn();
+  const searchMock = jest.fn();
   const qdrantClientMock = QdrantClient as jest.MockedClass<
     typeof QdrantClient
   >;
@@ -25,6 +26,7 @@ describe('QdrantService', () => {
           delete: deleteMock,
           getCollections: getCollectionsMock,
           scroll: scrollMock,
+          search: searchMock,
           upsert: upsertMock,
         }) as unknown as QdrantClient,
     );
@@ -178,6 +180,63 @@ describe('QdrantService', () => {
       wait: true,
       points: ['stale-id'],
     });
+  });
+
+  it('returns semantic search results in Qdrant relevance order', async () => {
+    searchMock.mockResolvedValue([
+      {
+        id: 'most-relevant',
+        score: 0.92,
+        payload: { content: 'Most relevant content.' },
+      },
+      {
+        id: 'less-relevant',
+        score: 0.81,
+        payload: { content: 'Less relevant content.' },
+      },
+    ]);
+    const service = createService();
+
+    await expect(
+      service.search('knowledge-base', [0.1, 0.2], 3, 0.75),
+    ).resolves.toEqual([
+      {
+        id: 'most-relevant',
+        score: 0.92,
+        payload: { content: 'Most relevant content.' },
+      },
+      {
+        id: 'less-relevant',
+        score: 0.81,
+        payload: { content: 'Less relevant content.' },
+      },
+    ]);
+    expect(searchMock).toHaveBeenCalledWith('knowledge-base', {
+      vector: [0.1, 0.2],
+      limit: 3,
+      score_threshold: 0.75,
+      with_payload: true,
+      with_vector: false,
+    });
+  });
+
+  it('returns a safe error when semantic search fails', async () => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    searchMock.mockRejectedValue(
+      new Error('secret vector database response must not escape'),
+    );
+    const service = createService();
+
+    await expect(
+      service.search('knowledge-base', [0.1, 0.2], 3, 0.75),
+    ).rejects.toThrow(
+      new ServiceUnavailableException(
+        'Vector database is temporarily unavailable.',
+      ),
+    );
+    expect(Logger.prototype.error).toHaveBeenCalledWith(
+      'Unable to search Qdrant points',
+    );
   });
 
   function createService(

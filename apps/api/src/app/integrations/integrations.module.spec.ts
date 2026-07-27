@@ -24,6 +24,7 @@ describe('IntegrationsModule', () => {
       ensureCollection: jest.fn(),
       listCollections: jest.fn(),
       listPoints: jest.fn(),
+      search: jest.fn(),
       upsertPoints: jest.fn(),
     };
     const module = await Test.createTestingModule({

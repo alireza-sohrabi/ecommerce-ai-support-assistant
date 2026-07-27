@@ -1,4 +1,3 @@
-import { ConfigService } from '@nestjs/config';
 import { EmbeddingService } from '@api/ports/embedding/embedding.service';
 import { VectorDatabaseService } from '@api/ports/vector-database/vector-database.service';
 import type { KnowledgeChunk } from './knowledge-chunk';
@@ -139,21 +138,19 @@ describe('KnowledgeBaseSyncService', () => {
     const vectorDatabase = {
       ensureCollection,
       listPoints,
+      search: jest.fn(),
       upsertPoints,
       deletePoints,
     } as unknown as VectorDatabaseService;
-    const configuration: Record<string, string> = {
-      KNOWLEDGE_BASE_VECTOR_COLLECTION: 'knowledge-base',
-    };
-    const configService = {
-      getOrThrow: jest.fn((key: string) => configuration[key]),
-    } as unknown as ConfigService;
-
     return new KnowledgeBaseSyncService(
       ingestion,
       embeddingService,
       vectorDatabase,
-      configService,
+      {
+        collectionName: 'knowledge-base',
+        retrievalLimit: 2,
+        retrievalScoreThreshold: 0.75,
+      },
     );
   }
 });

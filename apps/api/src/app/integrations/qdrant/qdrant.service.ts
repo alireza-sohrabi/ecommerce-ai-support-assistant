@@ -5,18 +5,22 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { QdrantClient } from '@qdrant/js-client-rest';
-import type {
-  StoredVectorPoint,
-  VectorPoint,
+import {
+  VectorDatabaseService,
+  type StoredVectorPoint,
+  type VectorPoint,
+  type VectorSearchResult,
 } from '@api/ports/vector-database/vector-database.service';
 import { readRequiredString } from '@api/shared/utils/configuration.util';
 
 @Injectable()
-export class QdrantService {
+export class QdrantService extends VectorDatabaseService {
   private readonly client: QdrantClient;
   private readonly logger = new Logger(QdrantService.name);
 
   constructor(configService: ConfigService) {
+    super();
+
     const url = this.readUrl(configService);
     const apiKey = readRequiredString(configService, 'QDRANT_API_KEY');
 
@@ -126,6 +130,31 @@ export class QdrantService {
       });
     } catch {
       this.throwUnavailable('Unable to delete stale Qdrant points');
+    }
+  }
+
+  async search(
+    collectionName: string,
+    vector: number[],
+    limit: number,
+    scoreThreshold: number,
+  ): Promise<VectorSearchResult[]> {
+    try {
+      const results = await this.client.search(collectionName, {
+        vector,
+        limit,
+        score_threshold: scoreThreshold,
+        with_payload: true,
+        with_vector: false,
+      });
+
+      return results.map((result) => ({
+        id: result.id,
+        score: result.score,
+        payload: result.payload ?? {},
+      }));
+    } catch {
+      this.throwUnavailable('Unable to search Qdrant points');
     }
   }
 
