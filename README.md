@@ -106,6 +106,33 @@ npm run dev:api
 
 The API health endpoint is available at `http://localhost:3001/api/health`.
 
+## Debugging the API
+
+Open the repository root in VS Code, add breakpoints in the API TypeScript
+source, and run **API: Launch and debug** from the Run and Debug panel. This
+starts the Nx development server under the Node debugger, pauses before
+application startup, loads the root `.env`, and maps the webpack output back to
+the original TypeScript files.
+
+Useful breakpoints for following the grounded chat flow are:
+
+- `ChatController.chat`
+- `ChatService.processMessage`
+- `KnowledgeBaseRetrievalService.retrieve`
+- `OpenAIEmbeddingService.generateEmbeddings`
+- `QdrantService.search`
+- `OpenAIService.generateResponse`
+
+To start the debuggable process separately:
+
+```bash
+npm run debug:api
+```
+
+Then select **API: Attach to port 9229** in VS Code. The process initially
+pauses until the debugger attaches. Stop the Nx terminal when the debugging
+session is complete.
+
 ## Knowledge-base synchronization
 
 Version-controlled Markdown sources live under
