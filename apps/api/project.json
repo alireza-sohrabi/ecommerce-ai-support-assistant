@@ -57,6 +57,11 @@
         "runBuildTargetDependencies": false
       },
       "configurations": {
+        "debug": {
+          "buildTarget": "api:build:development",
+          "inspect": "inspect-brk",
+          "port": 9229
+        },
         "development": {
           "buildTarget": "api:build:development"
         },
