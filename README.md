@@ -58,7 +58,7 @@ QDRANT_ENDPOINT=http://localhost:6333
 QDRANT_API_KEY=your-qdrant-api-key
 KNOWLEDGE_BASE_VECTOR_COLLECTION=knowledge-base
 KNOWLEDGE_BASE_RETRIEVAL_LIMIT=4
-KNOWLEDGE_BASE_RETRIEVAL_SCORE_THRESHOLD=0.7
+KNOWLEDGE_BASE_RETRIEVAL_SCORE_THRESHOLD=0.4
 WEB_ORIGIN=http://localhost:3000
 ```
 
@@ -81,8 +81,11 @@ collection migration.
 
 `KNOWLEDGE_BASE_RETRIEVAL_LIMIT` caps the number of chunks supplied to chat
 generation. `KNOWLEDGE_BASE_RETRIEVAL_SCORE_THRESHOLD` accepts a value from
-`0` to `1`; results below it are excluded. The default `0.7` is an initial
-cosine-similarity cutoff that should be tuned with retrieval evaluation data.
+`0` to `1`; results below it are excluded. The default `0.4` is an initial
+cosine-similarity cutoff calibrated against the repository's retrieval
+evaluation cases. Similarity is a ranking signal rather than a confidence
+percentage, so rerun the evaluation after changing the embedding model,
+chunking, source content, or threshold.
 
 ## Local development
 
@@ -146,6 +149,21 @@ The command creates the configured collection when necessary, embeds and
 upserts only new or changed chunks, deletes stale points, and prints a concise
 summary. Re-running it with unchanged source files performs no embedding or
 vector writes.
+
+## Knowledge-base retrieval evaluation
+
+After synchronizing the knowledge base, run the live retrieval evaluation:
+
+```bash
+npm run evaluate:knowledge-base-retrieval
+```
+
+The command embeds a small version-controlled set of supported and unsupported
+questions, searches the configured Qdrant collection, and verifies the expected
+source sections. It prints section metadata and a pass/fail summary without
+printing embeddings, credentials, or complete document content. It uses live
+OpenAI and Qdrant services, so it is intentionally separate from routine unit
+tests.
 
 ## Validation
 

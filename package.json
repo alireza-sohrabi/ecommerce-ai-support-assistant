@@ -11,6 +11,7 @@
     "dev:api": "nx serve api",
     "debug:api": "nx serve api --configuration=debug",
     "sync:knowledge-base": "ts-node --project apps/api/tsconfig.app.json -r tsconfig-paths/register apps/api/src/sync-knowledge-base.ts",
+    "evaluate:knowledge-base-retrieval": "ts-node --project apps/api/tsconfig.app.json -r tsconfig-paths/register apps/api/src/evaluate-knowledge-base-retrieval.ts",
     "build": "nx run-many -t build",
     "lint": "nx run-many -t lint",
     "test": "nx run-many -t test"
