@@ -57,6 +57,8 @@ OPENAI_EMBEDDING_DIMENSIONS=1536
 QDRANT_ENDPOINT=http://localhost:6333
 QDRANT_API_KEY=your-qdrant-api-key
 KNOWLEDGE_BASE_VECTOR_COLLECTION=knowledge-base
+KNOWLEDGE_BASE_RETRIEVAL_LIMIT=4
+KNOWLEDGE_BASE_RETRIEVAL_SCORE_THRESHOLD=0.7
 WEB_ORIGIN=http://localhost:3000
 ```
 
@@ -76,6 +78,11 @@ instance.
 knowledge-base Qdrant collection. Changing the embedding model or dimensions
 after creating the collection requires a new collection name or an explicit
 collection migration.
+
+`KNOWLEDGE_BASE_RETRIEVAL_LIMIT` caps the number of chunks supplied to chat
+generation. `KNOWLEDGE_BASE_RETRIEVAL_SCORE_THRESHOLD` accepts a value from
+`0` to `1`; results below it are excluded. The default `0.7` is an initial
+cosine-similarity cutoff that should be tuned with retrieval evaluation data.
 
 ## Local development
 
