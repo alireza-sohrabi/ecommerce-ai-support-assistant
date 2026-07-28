@@ -11,6 +11,13 @@ type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  sources?: ChatSource[];
+};
+
+type ChatSource = {
+  documentTitle: string;
+  sectionTitle: string;
+  sourcePath: string;
 };
 
 const fallbackErrorMessage = 'Unable to send your message. Please try again.';
@@ -47,6 +54,40 @@ function getApiErrorMessage(value: unknown): string {
   }
 
   return fallbackErrorMessage;
+}
+
+function getChatSources(value: unknown): ChatSource[] | null {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const sources: ChatSource[] = [];
+
+  for (const source of value) {
+    if (
+      !isRecord(source) ||
+      typeof source.documentTitle !== 'string' ||
+      !source.documentTitle.trim() ||
+      typeof source.sectionTitle !== 'string' ||
+      !source.sectionTitle.trim() ||
+      typeof source.sourcePath !== 'string' ||
+      !source.sourcePath.trim()
+    ) {
+      return null;
+    }
+
+    sources.push({
+      documentTitle: source.documentTitle.trim(),
+      sectionTitle: source.sectionTitle.trim(),
+      sourcePath: source.sourcePath.trim(),
+    });
+  }
+
+  return sources;
 }
 
 function AssistantIcon() {
@@ -127,6 +168,13 @@ export function Chat() {
       }
 
       const reply = chatResponse.reply;
+      const sources = getChatSources(chatResponse.sources);
+
+      if (sources === null) {
+        setErrorMessage(fallbackErrorMessage);
+        setDraftMessage(submittedMessage);
+        return;
+      }
 
       setMessageList((previousMessages) => [
         ...previousMessages,
@@ -134,6 +182,7 @@ export function Chat() {
           content: reply,
           id: `assistant-${Date.now()}`,
           role: 'assistant',
+          sources,
         },
       ]);
     } catch {
@@ -297,6 +346,36 @@ export function Chat() {
                 )}
               >
                 <p>{message.content}</p>
+                {message.role === 'assistant' &&
+                  message.sources &&
+                  message.sources.length > 0 && (
+                    <section
+                      aria-label="Sources for assistant response"
+                      className="mt-3 border-t border-slate-200 pt-3"
+                    >
+                      <p className="text-[0.68rem] font-bold tracking-wider text-slate-400 uppercase">
+                        Sources
+                      </p>
+                      <ul className="mt-2 space-y-2">
+                        {message.sources.map((source) => (
+                          <li
+                            key={`${source.sourcePath}:${source.sectionTitle}`}
+                            className="rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2"
+                          >
+                            <p className="font-semibold text-slate-700">
+                              {source.documentTitle}
+                            </p>
+                            <p className="text-xs text-slate-600">
+                              {source.sectionTitle}
+                            </p>
+                            <p className="mt-1 break-all font-mono text-[0.65rem] text-slate-400">
+                              {source.sourcePath}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
               </div>
             </div>
           </div>

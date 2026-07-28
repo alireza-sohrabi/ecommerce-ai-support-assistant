@@ -2,19 +2,91 @@
 
 A production-oriented AI assistant for e-commerce businesses that helps customers and support teams find reliable answers about products, shipping, returns, and store policies. The application will combine conversational AI with controlled business data so responses can be grounded, cited, and safely connected to live store tools.
 
-## Planned technology stack
+## Technology stack
 
 - Next.js and React
 - NestJS
 - TypeScript
-- OpenAI API
-- PostgreSQL and pgvector
+- OpenAI Responses and Embeddings APIs
+- Qdrant vector database
+- Nx monorepo tooling
+- PostgreSQL planned for persistent application data
 
 ## Project status
 
-**Milestone 1 - First model response**
+**Knowledge-base RAG with source transparency in progress**
 
-The application now includes a minimal chat interface, a validated NestJS chat endpoint, and a secure server-side OpenAI request. It displays user and assistant messages and provides loading and safe error states. See the [project plan](./PROJECT_PLAN.md) for the roadmap, architecture, acceptance criteria, and delivery principles.
+The application now provides a full-stack chat experience, bounded multi-turn
+context, deterministic Markdown ingestion, OpenAI embeddings, Qdrant vector
+synchronization, semantic retrieval, grounded responses, and a live retrieval
+evaluation suite. The current increment adds safe knowledge-base source metadata
+to API responses and displays it beneath assistant messages.
+
+See the [project plan](./PROJECT_PLAN.md) for the original milestone definitions,
+architecture, acceptance criteria, and delivery principles.
+
+## Roadmap
+
+The roadmap reflects the actual delivery order. Each phase should remain a
+small, reviewable increment with automated checks and an observable behavior
+change.
+
+| Phase                                    | Outcome                                                                                                                                                  | Status                                                                                                 |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 0. Repository foundation                 | Independently runnable Next.js and NestJS applications, environment protection, health checks, linting, tests, and builds                                | Complete                                                                                               |
+| 1. Core AI chat                          | Validated chat endpoint, server-side OpenAI Responses API integration, safe errors, and responsive chat interface                                        | Complete                                                                                               |
+| 2. Conversation experience               | Bounded multi-turn context is complete; streaming, cancellation, usage telemetry, and request-duration logging remain                                    | In progress                                                                                            |
+| 3. Knowledge-base ingestion              | Version-controlled Markdown loading, deterministic chunking and hashing, embeddings, idempotent Qdrant synchronization, and stale-vector deletion        | Complete                                                                                               |
+| 4. Grounded semantic retrieval           | Query embeddings, thresholded vector search, validated context, honest fallback behavior, and live retrieval evaluation                                  | Complete                                                                                               |
+| 5. Source transparency                   | Return safe source metadata with grounded responses and display accessible source cards in the chat UI                                                   | In progress — [issue #22](https://github.com/alireza-sohrabi/ecommerce-ai-support-assistant/issues/22) |
+| 6. Structured support workflows          | Classify support requests and generate schema-validated response drafts that require human review                                                        | Planned                                                                                                |
+| 7. Product data and semantic search      | Add synthetic product storage, embeddings, metadata filters, natural-language search, and retrieval evaluation                                           | Planned                                                                                                |
+| 8. Shopify and controlled business tools | Connect Shopify for read-only product, inventory, order, and fulfillment lookup; add approval-gated write actions with validation and strict step limits | Planned                                                                                                |
+| 9. Persistent conversations and memory   | Store conversations safely, isolate users, summarize history, retrieve relevant preferences, and support inspection and deletion                         | Planned                                                                                                |
+| 10. Production readiness                 | Add authentication, authorization, rate limits, secure headers, retries, timeouts, observability, migrations, and deployment configuration               | Planned                                                                                                |
+| 11. Evaluation and portfolio package     | Expand adversarial and answer-quality evaluation, document architecture and tradeoffs, and create demo and portfolio material                            | Planned                                                                                                |
+
+```mermaid
+flowchart LR
+    subgraph Complete["Completed"]
+        P0["0 · Repository foundation"]
+        P1["1 · Core AI chat"]
+        P3["3 · Knowledge-base ingestion"]
+        P4["4 · Grounded semantic retrieval"]
+
+        P0 --> P1 --> P3 --> P4
+    end
+
+    subgraph Active["Current development"]
+        P2["2 · Conversation experience<br/>Context complete<br/>Streaming, cancellation, and telemetry remaining"]
+        P5["5 · Source transparency<br/>Issue #22"]
+        SEC["Adversarial and<br/>prompt-injection evaluation"]
+
+        P4 --> P5 --> SEC
+        P1 --> P2
+    end
+
+    subgraph Planned["Planned"]
+        P6["6 · Structured support workflows"]
+        P7["7 · Product semantic search"]
+        P8["8 · Shopify integration<br/>and controlled tools"]
+        P9["9 · Persistent conversations<br/>and memory"]
+        P10["10 · Production readiness"]
+        P11["11 · Evaluation and<br/>portfolio package"]
+
+        P6 --> P7 --> P8 --> P9 --> P10 --> P11
+    end
+
+    SEC --> P6
+    P2 --> P6
+```
+
+### Immediate next steps
+
+1. Complete and merge source metadata and UI cards for issue #22.
+2. Add adversarial retrieval and prompt-injection evaluation cases.
+3. Finish streaming, cancellation, and request telemetry.
+4. Implement structured support classification and draft generation.
 
 ## Repository structure
 
@@ -108,6 +180,24 @@ npm run dev:api
 ```
 
 The API health endpoint is available at `http://localhost:3001/api/health`.
+
+Grounded chat responses include safe source metadata:
+
+```json
+{
+  "reply": "Standard shipping takes 3–7 business days after dispatch.",
+  "sources": [
+    {
+      "documentTitle": "Shipping Policy",
+      "sectionTitle": "Delivery options",
+      "sourcePath": "policies/shipping.md"
+    }
+  ]
+}
+```
+
+The API does not return retrieved content, embeddings, similarity scores,
+content hashes, vector point IDs, or vector-database details.
 
 ## Debugging the API
 

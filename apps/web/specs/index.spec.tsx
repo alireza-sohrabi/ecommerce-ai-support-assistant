@@ -54,6 +54,13 @@ describe('Chat', () => {
       ok: true,
       json: jest.fn().mockResolvedValue({
         reply: 'Your order is currently being processed.',
+        sources: [
+          {
+            documentTitle: 'Order Tracking Guide',
+            sectionTitle: 'Finding your tracking link',
+            sourcePath: 'guides/order-tracking.md',
+          },
+        ],
       }),
     } as unknown as Response);
 
@@ -81,8 +88,37 @@ describe('Chat', () => {
       await screen.findByText('Your order is currently being processed.'),
     ).toBeTruthy();
     expect(
+      screen.getByRole('region', {
+        name: 'Sources for assistant response',
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText('Order Tracking Guide')).toBeTruthy();
+    expect(screen.getByText('Finding your tracking link')).toBeTruthy();
+    expect(screen.getByText('guides/order-tracking.md')).toBeTruthy();
+    expect(
       (screen.getByLabelText('Message') as HTMLTextAreaElement).value,
     ).toBe('');
+  });
+
+  it('accepts legacy responses without a sources field', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        reply: 'No sources were returned for this response.',
+      }),
+    } as unknown as Response);
+
+    render(<Chat />);
+    submitMessage('Test a legacy response');
+
+    expect(
+      await screen.findByText('No sources were returned for this response.'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('region', {
+        name: 'Sources for assistant response',
+      }),
+    ).toBeNull();
   });
 
   it('includes previous messages in a follow-up request', async () => {
