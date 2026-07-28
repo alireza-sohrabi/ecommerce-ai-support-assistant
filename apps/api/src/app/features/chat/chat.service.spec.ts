@@ -68,7 +68,7 @@ describe('ChatService', () => {
         role: 'user' as const,
       },
     ];
-    const reply = await service.processMessage(messages);
+    const response = await service.processMessage(messages);
 
     expect(retrieveMock).toHaveBeenCalledWith('ORDER-123');
     expect(generateResponseMock).toHaveBeenCalledWith(
@@ -88,7 +88,16 @@ describe('ChatService', () => {
         maxOutputTokens: 300,
       }),
     );
-    expect(reply).toBe('Your order is being processed.');
+    expect(response).toEqual({
+      reply: 'Your order is being processed.',
+      sources: [
+        {
+          documentTitle: 'Order Tracking',
+          sectionTitle: 'Tracking an order',
+          sourcePath: 'guides/order-tracking.md',
+        },
+      ],
+    });
   });
 
   it('returns an honest fallback without generation when retrieval has no result', async () => {
@@ -101,10 +110,73 @@ describe('ChatService', () => {
           role: 'user',
         },
       ]),
-    ).resolves.toBe(
-      "I'm sorry, but the available store knowledge does not contain enough information to answer that question.",
-    );
+    ).resolves.toEqual({
+      reply:
+        "I'm sorry, but the available store knowledge does not contain enough information to answer that question.",
+      sources: [],
+    });
     expect(generateResponseMock).not.toHaveBeenCalled();
+  });
+
+  it('returns unique safe source metadata in retrieval order', async () => {
+    retrieveMock.mockResolvedValueOnce([
+      {
+        id: 'first-point',
+        sourcePath: 'policies/refunds.md',
+        category: 'policies',
+        documentTitle: 'Refund Policy',
+        sectionTitle: 'Refund method and timing',
+        sectionIndex: 1,
+        content: 'Refund timing content.',
+        contentHash: 'first-hash',
+        score: 0.61,
+      },
+      {
+        id: 'duplicate-point',
+        sourcePath: 'policies/refunds.md',
+        category: 'policies',
+        documentTitle: 'Refund Policy',
+        sectionTitle: 'Refund method and timing',
+        sectionIndex: 1,
+        content: 'Duplicate refund timing content.',
+        contentHash: 'duplicate-hash',
+        score: 0.6,
+      },
+      {
+        id: 'second-point',
+        sourcePath: 'policies/refunds.md',
+        category: 'policies',
+        documentTitle: 'Refund Policy',
+        sectionTitle: 'Return inspection',
+        sectionIndex: 0,
+        content: 'Return inspection content.',
+        contentHash: 'second-hash',
+        score: 0.55,
+      },
+    ]);
+
+    await expect(
+      service.processMessage([
+        {
+          content: 'How long do refunds take?',
+          role: 'user',
+        },
+      ]),
+    ).resolves.toEqual({
+      reply: 'Your order is being processed.',
+      sources: [
+        {
+          documentTitle: 'Refund Policy',
+          sectionTitle: 'Refund method and timing',
+          sourcePath: 'policies/refunds.md',
+        },
+        {
+          documentTitle: 'Refund Policy',
+          sectionTitle: 'Return inspection',
+          sourcePath: 'policies/refunds.md',
+        },
+      ],
+    });
   });
 
   it('propagates safe retrieval errors without calling generation', async () => {
