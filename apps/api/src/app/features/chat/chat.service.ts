@@ -7,7 +7,7 @@ import {
 import { ChatMessage } from './interface/ChatMessage';
 import { type ChatResponse, type ChatSource } from './interface/ChatResponse';
 
-const NO_RELEVANT_KNOWLEDGE_REPLY =
+export const NO_RELEVANT_KNOWLEDGE_REPLY =
   "I'm sorry, but the available store knowledge does not contain enough information to answer that question.";
 
 @Injectable()

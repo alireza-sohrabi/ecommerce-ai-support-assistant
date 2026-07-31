@@ -14,13 +14,14 @@ A production-oriented AI assistant for e-commerce businesses that helps customer
 
 ## Project status
 
-**Knowledge-base RAG with source transparency in progress**
+**Adversarial RAG evaluation in progress**
 
 The application now provides a full-stack chat experience, bounded multi-turn
 context, deterministic Markdown ingestion, OpenAI embeddings, Qdrant vector
-synchronization, semantic retrieval, grounded responses, and a live retrieval
-evaluation suite. The current increment adds safe knowledge-base source metadata
-to API responses and displays it beneath assistant messages.
+synchronization, semantic retrieval, grounded responses, safe source metadata,
+and a live retrieval evaluation suite. The current increment adds adversarial
+answer evaluation for grounding overrides, prompt injection, instruction
+extraction, and unsupported questions.
 
 See the [project plan](./PROJECT_PLAN.md) for the original milestone definitions,
 architecture, acceptance criteria, and delivery principles.
@@ -31,20 +32,20 @@ The roadmap reflects the actual delivery order. Each phase should remain a
 small, reviewable increment with automated checks and an observable behavior
 change.
 
-| Phase                                    | Outcome                                                                                                                                                  | Status                                                                                                 |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 0. Repository foundation                 | Independently runnable Next.js and NestJS applications, environment protection, health checks, linting, tests, and builds                                | Complete                                                                                               |
-| 1. Core AI chat                          | Validated chat endpoint, server-side OpenAI Responses API integration, safe errors, and responsive chat interface                                        | Complete                                                                                               |
-| 2. Conversation experience               | Bounded multi-turn context is complete; streaming, cancellation, usage telemetry, and request-duration logging remain                                    | In progress                                                                                            |
-| 3. Knowledge-base ingestion              | Version-controlled Markdown loading, deterministic chunking and hashing, embeddings, idempotent Qdrant synchronization, and stale-vector deletion        | Complete                                                                                               |
-| 4. Grounded semantic retrieval           | Query embeddings, thresholded vector search, validated context, honest fallback behavior, and live retrieval evaluation                                  | Complete                                                                                               |
-| 5. Source transparency                   | Return safe source metadata with grounded responses and display accessible source cards in the chat UI                                                   | In progress — [issue #22](https://github.com/alireza-sohrabi/ecommerce-ai-support-assistant/issues/22) |
-| 6. Structured support workflows          | Classify support requests and generate schema-validated response drafts that require human review                                                        | Planned                                                                                                |
-| 7. Product data and semantic search      | Add synthetic product storage, embeddings, metadata filters, natural-language search, and retrieval evaluation                                           | Planned                                                                                                |
-| 8. Shopify and controlled business tools | Connect Shopify for read-only product, inventory, order, and fulfillment lookup; add approval-gated write actions with validation and strict step limits | Planned                                                                                                |
-| 9. Persistent conversations and memory   | Store conversations safely, isolate users, summarize history, retrieve relevant preferences, and support inspection and deletion                         | Planned                                                                                                |
-| 10. Production readiness                 | Add authentication, authorization, rate limits, secure headers, retries, timeouts, observability, migrations, and deployment configuration               | Planned                                                                                                |
-| 11. Evaluation and portfolio package     | Expand adversarial and answer-quality evaluation, document architecture and tradeoffs, and create demo and portfolio material                            | Planned                                                                                                |
+| Phase                                    | Outcome                                                                                                                                                  | Status      |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 0. Repository foundation                 | Independently runnable Next.js and NestJS applications, environment protection, health checks, linting, tests, and builds                                | Complete    |
+| 1. Core AI chat                          | Validated chat endpoint, server-side OpenAI Responses API integration, safe errors, and responsive chat interface                                        | Complete    |
+| 2. Conversation experience               | Bounded multi-turn context is complete; streaming, cancellation, usage telemetry, and request-duration logging remain                                    | In progress |
+| 3. Knowledge-base ingestion              | Version-controlled Markdown loading, deterministic chunking and hashing, embeddings, idempotent Qdrant synchronization, and stale-vector deletion        | Complete    |
+| 4. Grounded semantic retrieval           | Query embeddings, thresholded vector search, validated context, honest fallback behavior, and live retrieval evaluation                                  | Complete    |
+| 5. Source transparency                   | Return safe source metadata with grounded responses and display accessible source cards in the chat UI                                                   | Complete    |
+| 6. Structured support workflows          | Classify support requests and generate schema-validated response drafts that require human review                                                        | Planned     |
+| 7. Product data and semantic search      | Add synthetic product storage, embeddings, metadata filters, natural-language search, and retrieval evaluation                                           | Planned     |
+| 8. Shopify and controlled business tools | Connect Shopify for read-only product, inventory, order, and fulfillment lookup; add approval-gated write actions with validation and strict step limits | Planned     |
+| 9. Persistent conversations and memory   | Store conversations safely, isolate users, summarize history, retrieve relevant preferences, and support inspection and deletion                         | Planned     |
+| 10. Production readiness                 | Add authentication, authorization, rate limits, secure headers, retries, timeouts, observability, migrations, and deployment configuration               | Planned     |
+| 11. Evaluation and portfolio package     | Expand adversarial and answer-quality evaluation, document architecture and tradeoffs, and create demo and portfolio material                            | Planned     |
 
 ```mermaid
 flowchart LR
@@ -53,16 +54,16 @@ flowchart LR
         P1["1 · Core AI chat"]
         P3["3 · Knowledge-base ingestion"]
         P4["4 · Grounded semantic retrieval"]
+        P5["5 · Source transparency"]
 
-        P0 --> P1 --> P3 --> P4
+        P0 --> P1 --> P3 --> P4 --> P5
     end
 
     subgraph Active["Current development"]
         P2["2 · Conversation experience<br/>Context complete<br/>Streaming, cancellation, and telemetry remaining"]
-        P5["5 · Source transparency<br/>Issue #22"]
-        SEC["Adversarial and<br/>prompt-injection evaluation"]
+        SEC["Adversarial RAG evaluation<br/>Issue #24"]
 
-        P4 --> P5 --> SEC
+        P5 --> SEC
         P1 --> P2
     end
 
@@ -83,10 +84,9 @@ flowchart LR
 
 ### Immediate next steps
 
-1. Complete and merge source metadata and UI cards for issue #22.
-2. Add adversarial retrieval and prompt-injection evaluation cases.
-3. Finish streaming, cancellation, and request telemetry.
-4. Implement structured support classification and draft generation.
+1. Complete adversarial RAG and prompt-injection evaluation for issue #24.
+2. Finish streaming, cancellation, and request telemetry.
+3. Implement structured support classification and draft generation.
 
 ## Repository structure
 
@@ -254,6 +254,27 @@ source sections. It prints section metadata and a pass/fail summary without
 printing embeddings, credentials, or complete document content. It uses live
 OpenAI and Qdrant services, so it is intentionally separate from routine unit
 tests.
+
+## Adversarial RAG evaluation
+
+Run the live answer-safety evaluation:
+
+```bash
+npm run evaluate:adversarial-rag
+```
+
+The command supplies version-controlled, test-only chunks directly to the chat
+service and calls the configured OpenAI model. It covers a normal grounded
+answer, indirect prompt injection inside reference content, a direct grounding
+override, system-instruction extraction, and an unsupported adversarial
+question. It verifies required store facts, forbidden canaries and prompt text,
+the exact unsupported fallback, and safe source metadata.
+
+The test chunks never enter Qdrant or the production knowledge base. Responses
+are deliberately omitted from console and log reports so a failed evaluation
+does not persist potentially leaked content. Because this command makes live,
+nondeterministic model calls, it is separate from routine unit tests and may
+incur API usage.
 
 ## Validation
 
