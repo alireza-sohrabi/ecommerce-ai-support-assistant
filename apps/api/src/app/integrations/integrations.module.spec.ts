@@ -14,6 +14,7 @@ describe('IntegrationsModule', () => {
   it('binds provider-neutral ports to configured integrations', async () => {
     const openAIService = {
       generateResponse: jest.fn(),
+      streamResponse: jest.fn(),
     };
     const openAIEmbeddingService = {
       generateEmbeddings: jest.fn(),

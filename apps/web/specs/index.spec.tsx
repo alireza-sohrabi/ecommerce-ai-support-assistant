@@ -1,17 +1,68 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { TextDecoder, TextEncoder } from 'node:util';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import Page from '../src/app/page';
 import { Chat } from '../src/app/features/chat/chat';
 
 const apiBaseUrl = 'http://localhost:3001';
 const originalFetch = global.fetch;
+const originalTextDecoder = global.TextDecoder;
 const fetchMock = jest.fn<typeof fetch>();
+const encoder = new TextEncoder();
+
+type StreamEvent =
+  | { type: 'delta'; text: string }
+  | {
+      type: 'complete';
+      sources?: Array<{
+        documentTitle: string;
+        sectionTitle: string;
+        sourcePath: string;
+      }>;
+    }
+  | { type: 'error'; message: string };
 
 function submitMessage(message: string) {
   fireEvent.change(screen.getByLabelText('Message'), {
     target: { value: message },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+}
+
+function createStreamingResponseFromChunks(chunks: string[]): Response {
+  let chunkIndex = 0;
+
+  return {
+    body: {
+      getReader: () => ({
+        cancel: jest.fn().mockResolvedValue(undefined),
+        read: jest.fn(async () => {
+          if (chunkIndex >= chunks.length) {
+            return { done: true, value: undefined };
+          }
+
+          const value = encoder.encode(chunks[chunkIndex]);
+          chunkIndex += 1;
+          return { done: false, value };
+        }),
+        releaseLock: jest.fn(),
+      }),
+    },
+    ok: true,
+  } as unknown as Response;
+}
+
+function createStreamingResponse(events: StreamEvent[]): Response {
+  return createStreamingResponseFromChunks(
+    events.map((event) => `${JSON.stringify(event)}\n`),
+  );
+}
+
+function createReplyResponse(reply: string): Response {
+  return createStreamingResponse([
+    { type: 'delta', text: reply },
+    { type: 'complete', sources: [] },
+  ]);
 }
 
 describe('Page', () => {
@@ -35,6 +86,11 @@ describe('Chat', () => {
       value: fetchMock,
       writable: true,
     });
+    Object.defineProperty(global, 'TextDecoder', {
+      configurable: true,
+      value: TextDecoder,
+      writable: true,
+    });
   });
 
   afterAll(() => {
@@ -47,13 +103,24 @@ describe('Chat', () => {
     } else {
       Reflect.deleteProperty(global, 'fetch');
     }
+
+    if (originalTextDecoder) {
+      Object.defineProperty(global, 'TextDecoder', {
+        configurable: true,
+        value: originalTextDecoder,
+        writable: true,
+      });
+    } else {
+      Reflect.deleteProperty(global, 'TextDecoder');
+    }
   });
 
-  it('submits a message and renders the assistant reply', async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue({
-        reply: 'Your order is currently being processed.',
+  it('renders streamed deltas and final source metadata', async () => {
+    const firstEvent = '{"type":"delta","text":"Your order is currently being ';
+    const remainingEvents =
+      'processed."}\n' +
+      `${JSON.stringify({
+        type: 'complete',
         sources: [
           {
             documentTitle: 'Order Tracking Guide',
@@ -61,8 +128,15 @@ describe('Chat', () => {
             sourcePath: 'guides/order-tracking.md',
           },
         ],
-      }),
-    } as unknown as Response);
+      })}\n`;
+
+    fetchMock.mockResolvedValue(
+      createStreamingResponseFromChunks([
+        firstEvent.slice(0, 23),
+        firstEvent.slice(23),
+        remainingEvents,
+      ]),
+    );
 
     render(<Chat />);
     submitMessage('Where is my order?');
@@ -72,9 +146,11 @@ describe('Chat', () => {
     ).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith(`${apiBaseUrl}/api/chat`, {
       headers: {
+        Accept: 'application/x-ndjson',
         'Content-Type': 'application/json',
       },
       method: 'POST',
+      signal: expect.any(AbortSignal),
       body: JSON.stringify({
         messages: [
           {
@@ -95,21 +171,21 @@ describe('Chat', () => {
     expect(screen.getByText('Order Tracking Guide')).toBeTruthy();
     expect(screen.getByText('Finding your tracking link')).toBeTruthy();
     expect(screen.getByText('guides/order-tracking.md')).toBeTruthy();
-    expect(
-      (screen.getByLabelText('Message') as HTMLTextAreaElement).value,
-    ).toBe('');
   });
 
-  it('accepts legacy responses without a sources field', async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue({
-        reply: 'No sources were returned for this response.',
-      }),
-    } as unknown as Response);
+  it('accepts complete events without source metadata', async () => {
+    fetchMock.mockResolvedValue(
+      createStreamingResponse([
+        {
+          type: 'delta',
+          text: 'No sources were returned for this response.',
+        },
+        { type: 'complete' },
+      ]),
+    );
 
     render(<Chat />);
-    submitMessage('Test a legacy response');
+    submitMessage('Test a response without sources');
 
     expect(
       await screen.findByText('No sources were returned for this response.'),
@@ -123,18 +199,10 @@ describe('Chat', () => {
 
   it('includes previous messages in a follow-up request', async () => {
     fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: jest.fn().mockResolvedValue({
-          reply: 'What is your order number?',
-        }),
-      } as unknown as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: jest.fn().mockResolvedValue({
-          reply: 'Your order is being processed.',
-        }),
-      } as unknown as Response);
+      .mockResolvedValueOnce(createReplyResponse('What is your order number?'))
+      .mockResolvedValueOnce(
+        createReplyResponse('Your order is being processed.'),
+      );
 
     render(<Chat />);
     submitMessage('Where is my order?');
@@ -142,11 +210,14 @@ describe('Chat', () => {
 
     submitMessage('ORDER-123');
 
+    await screen.findByText('Your order is being processed.');
     expect(fetchMock).toHaveBeenLastCalledWith(`${apiBaseUrl}/api/chat`, {
       headers: {
+        Accept: 'application/x-ndjson',
         'Content-Type': 'application/json',
       },
       method: 'POST',
+      signal: expect.any(AbortSignal),
       body: JSON.stringify({
         messages: [
           {
@@ -164,9 +235,6 @@ describe('Chat', () => {
         ],
       }),
     });
-    expect(
-      await screen.findByText('Your order is being processed.'),
-    ).toBeTruthy();
   });
 
   it('limits the request history to 10 messages', async () => {
@@ -176,12 +244,7 @@ describe('Chat', () => {
       };
       const latestMessage = requestBody.messages.at(-1);
 
-      return {
-        ok: true,
-        json: jest.fn().mockResolvedValue({
-          reply: `Reply to ${latestMessage?.content}`,
-        }),
-      } as unknown as Response;
+      return createReplyResponse(`Reply to ${latestMessage?.content}`);
     });
 
     render(<Chat />);
@@ -207,21 +270,59 @@ describe('Chat', () => {
     });
   });
 
-  it('shows a loading state while the request is pending', () => {
-    fetchMock.mockReturnValue(new Promise(() => undefined));
+  it('cancels an active stream with the Stop button', async () => {
+    let requestSignal: AbortSignal | undefined;
+
+    fetchMock.mockImplementation(async (_input, init) => {
+      requestSignal = init?.signal ?? undefined;
+      let readCount = 0;
+
+      return {
+        body: {
+          getReader: () => ({
+            cancel: jest.fn().mockResolvedValue(undefined),
+            read: jest.fn(() => {
+              readCount += 1;
+
+              if (readCount === 1) {
+                return Promise.resolve({
+                  done: false,
+                  value: encoder.encode(
+                    '{"type":"delta","text":"A partial reply"}\n',
+                  ),
+                });
+              }
+
+              return new Promise((_, reject) => {
+                requestSignal?.addEventListener('abort', () => {
+                  reject(
+                    new DOMException('The request was aborted.', 'AbortError'),
+                  );
+                });
+              });
+            }),
+            releaseLock: jest.fn(),
+          }),
+        },
+        ok: true,
+      } as unknown as Response;
+    });
 
     render(<Chat />);
     submitMessage('Can I return this item?');
 
-    const sendingButton = screen.getByRole('button', { name: /Sending/ });
+    await screen.findByText('A partial reply');
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
 
-    expect((sendingButton as HTMLButtonElement).disabled).toBe(true);
-    expect(
-      (screen.getByLabelText('Message') as HTMLTextAreaElement).disabled,
-    ).toBe(true);
+    await waitFor(() => expect(requestSignal?.aborted).toBe(true));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy(),
+    );
+    expect(screen.queryByText('A partial reply')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('shows the safe backend message when the request fails', async () => {
+  it('shows the safe backend message when the request fails before streaming', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       json: jest.fn().mockResolvedValue({
@@ -241,5 +342,27 @@ describe('Chat', () => {
     expect(
       (screen.getByLabelText('Message') as HTMLTextAreaElement).value,
     ).toBe('Where is my order?');
+  });
+
+  it('shows a streamed error and removes the incomplete assistant reply', async () => {
+    fetchMock.mockResolvedValue(
+      createStreamingResponse([
+        { type: 'delta', text: 'An incomplete reply' },
+        {
+          type: 'error',
+          message: 'The response could not be completed. Please try again.',
+        },
+      ]),
+    );
+
+    render(<Chat />);
+    submitMessage('Where is my order?');
+
+    const alert = await screen.findByRole('alert');
+
+    expect(alert.textContent).toBe(
+      'The response could not be completed. Please try again.',
+    );
+    expect(screen.queryByText('An incomplete reply')).toBeNull();
   });
 });
