@@ -89,4 +89,77 @@ describe('OpenAIService', () => {
       ),
     );
   });
+
+  it('yields text deltas from an OpenAI response stream', async () => {
+    const abortController = new AbortController();
+    const stream = (async function* () {
+      yield {
+        type: 'response.created' as const,
+      };
+      yield {
+        type: 'response.output_text.delta' as const,
+        delta: 'Your order ',
+      };
+      yield {
+        type: 'response.output_text.delta' as const,
+        delta: 'is being processed.',
+      };
+      yield {
+        type: 'response.completed' as const,
+      };
+    })();
+    createResponseMock.mockResolvedValueOnce(stream);
+
+    const deltas: string[] = [];
+
+    for await (const delta of service.streamResponse(
+      {
+        input: 'Where is my order?',
+        instructions: 'Be helpful.',
+        maxOutputTokens: 300,
+      },
+      abortController.signal,
+    )) {
+      deltas.push(delta);
+    }
+
+    expect(createResponseMock).toHaveBeenCalledWith(
+      {
+        model: 'gpt-5.6-luna',
+        input: 'Where is my order?',
+        instructions: 'Be helpful.',
+        max_output_tokens: 300,
+        stream: true,
+      },
+      {
+        signal: abortController.signal,
+      },
+    );
+    expect(deltas).toEqual(['Your order ', 'is being processed.']);
+  });
+
+  it('returns a safe error when an OpenAI stream fails', async () => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    createResponseMock.mockResolvedValueOnce(
+      (async function* () {
+        yield {
+          type: 'response.failed' as const,
+        };
+      })(),
+    );
+
+    const consumeStream = async () => {
+      for await (const delta of service.streamResponse({
+        input: 'Where is my order?',
+      })) {
+        void delta;
+      }
+    };
+
+    await expect(consumeStream()).rejects.toThrow(
+      new ServiceUnavailableException(
+        'AI service is temporarily unavailable. Please try again later.',
+      ),
+    );
+  });
 });

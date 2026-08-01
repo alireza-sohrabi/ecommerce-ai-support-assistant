@@ -4,6 +4,7 @@ import classNames from 'classnames';
 import {
   type FormEventHandler,
   type KeyboardEventHandler,
+  useRef,
   useState,
 } from 'react';
 
@@ -20,12 +21,28 @@ type ChatSource = {
   sourcePath: string;
 };
 
+type ChatStreamEvent =
+  | {
+      type: 'delta';
+      text: string;
+    }
+  | {
+      type: 'complete';
+      sources: ChatSource[];
+    }
+  | {
+      type: 'error';
+      message: string;
+    };
+
 const fallbackErrorMessage = 'Unable to send your message. Please try again.';
 const quickPrompts = [
   'Where is my order?',
   'What is your return policy?',
   'Help me choose a product',
 ];
+
+class ChatStreamError extends Error {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -90,6 +107,105 @@ function getChatSources(value: unknown): ChatSource[] | null {
   return sources;
 }
 
+function getChatStreamEvent(value: unknown): ChatStreamEvent | null {
+  if (!isRecord(value) || typeof value.type !== 'string') {
+    return null;
+  }
+
+  if (value.type === 'delta' && typeof value.text === 'string') {
+    return {
+      type: 'delta',
+      text: value.text,
+    };
+  }
+
+  if (value.type === 'complete') {
+    const sources = getChatSources(value.sources);
+
+    return sources
+      ? {
+          type: 'complete',
+          sources,
+        }
+      : null;
+  }
+
+  if (
+    value.type === 'error' &&
+    typeof value.message === 'string' &&
+    value.message.trim()
+  ) {
+    return {
+      type: 'error',
+      message: value.message.trim(),
+    };
+  }
+
+  return null;
+}
+
+function parseChatStreamLine(line: string): ChatStreamEvent {
+  let value: unknown;
+
+  try {
+    value = JSON.parse(line);
+  } catch {
+    throw new Error('The chat stream contained invalid JSON.');
+  }
+
+  const event = getChatStreamEvent(value);
+
+  if (!event) {
+    throw new Error('The chat stream contained an invalid event.');
+  }
+
+  return event;
+}
+
+async function readChatStream(
+  response: Response,
+  onEvent: (event: ChatStreamEvent) => void,
+): Promise<void> {
+  if (!response.body) {
+    throw new Error('The chat response did not include a readable stream.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (line.trim()) {
+          onEvent(parseChatStreamLine(line));
+        }
+      }
+    }
+
+    buffer += decoder.decode();
+
+    if (buffer.trim()) {
+      onEvent(parseChatStreamLine(buffer));
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 function AssistantIcon() {
   return (
     <svg className="size-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -107,7 +223,9 @@ export function Chat() {
   const [draftMessage, setDraftMessage] = useState('');
   const [messageList, setMessageList] = useState<ChatMessage[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasStreamingContent, setHasStreamingContent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const requestAbortController = useRef<AbortController | null>(null);
 
   const handleSubmit: FormEventHandler<HTMLFormElement> = async (event) => {
     event.preventDefault();
@@ -117,10 +235,16 @@ export function Chat() {
     }
 
     const submittedMessage = draftMessage.trim();
+    const assistantMessageId = `assistant-${Date.now()}`;
+    const abortController = new AbortController();
+    let hasAssistantMessage = false;
+    let hasCompleted = false;
 
     setIsSubmitting(true);
+    setHasStreamingContent(false);
     setErrorMessage(null);
     setDraftMessage('');
+    requestAbortController.current = abortController;
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -138,9 +262,11 @@ export function Chat() {
         `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/chat`,
         {
           headers: {
+            Accept: 'application/x-ndjson',
             'Content-Type': 'application/json',
           },
           method: 'POST',
+          signal: abortController.signal,
           body: JSON.stringify({
             messages: messagesForRequest,
           }),
@@ -155,42 +281,88 @@ export function Chat() {
         return;
       }
 
-      const chatResponse: unknown = await response.json();
+      await readChatStream(response, (streamEvent) => {
+        if (hasCompleted) {
+          throw new Error('The chat stream continued after completion.');
+        }
 
-      if (
-        !isRecord(chatResponse) ||
-        typeof chatResponse.reply !== 'string' ||
-        !chatResponse.reply.trim()
-      ) {
-        setErrorMessage(fallbackErrorMessage);
-        setDraftMessage(submittedMessage);
-        return;
+        if (streamEvent.type === 'delta') {
+          if (!streamEvent.text) {
+            return;
+          }
+
+          setHasStreamingContent(true);
+          const isFirstDelta = !hasAssistantMessage;
+          hasAssistantMessage = true;
+          setMessageList((previousMessages) => {
+            if (isFirstDelta) {
+              return [
+                ...previousMessages,
+                {
+                  content: streamEvent.text,
+                  id: assistantMessageId,
+                  role: 'assistant',
+                },
+              ];
+            }
+
+            return previousMessages.map((message) =>
+              message.id === assistantMessageId
+                ? {
+                    ...message,
+                    content: message.content + streamEvent.text,
+                  }
+                : message,
+            );
+          });
+          return;
+        }
+
+        if (streamEvent.type === 'error') {
+          throw new ChatStreamError(streamEvent.message);
+        }
+
+        hasCompleted = true;
+        setMessageList((previousMessages) =>
+          previousMessages.map((message) =>
+            message.id === assistantMessageId
+              ? {
+                  ...message,
+                  sources: streamEvent.sources,
+                }
+              : message,
+          ),
+        );
+      });
+
+      if (!hasCompleted || !hasAssistantMessage) {
+        throw new Error('The chat stream ended before completion.');
       }
+    } catch (error) {
+      setMessageList((previousMessages) =>
+        previousMessages.filter((message) => message.id !== assistantMessageId),
+      );
 
-      const reply = chatResponse.reply;
-      const sources = getChatSources(chatResponse.sources);
-
-      if (sources === null) {
-        setErrorMessage(fallbackErrorMessage);
+      if (!abortController.signal.aborted) {
+        setErrorMessage(
+          error instanceof ChatStreamError
+            ? error.message
+            : fallbackErrorMessage,
+        );
         setDraftMessage(submittedMessage);
-        return;
       }
-
-      setMessageList((previousMessages) => [
-        ...previousMessages,
-        {
-          content: reply,
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          sources,
-        },
-      ]);
-    } catch {
-      setErrorMessage(fallbackErrorMessage);
-      setDraftMessage(submittedMessage);
     } finally {
+      if (requestAbortController.current === abortController) {
+        requestAbortController.current = null;
+      }
+
       setIsSubmitting(false);
+      setHasStreamingContent(false);
     }
+  };
+
+  const handleStop = () => {
+    requestAbortController.current?.abort();
   };
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
@@ -381,7 +553,7 @@ export function Chat() {
           </div>
         ))}
 
-        {isSubmitting && (
+        {isSubmitting && !hasStreamingContent && (
           <div
             className="mr-auto flex items-end gap-2.5"
             aria-label="Assistant is typing"
@@ -457,30 +629,49 @@ export function Chat() {
               </span>
             </div>
             <button
-              type="submit"
-              disabled={isSubmitting || !draftMessage.trim()}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-md shadow-blue-200 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:translate-y-0 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+              type={isSubmitting ? 'button' : 'submit'}
+              disabled={!isSubmitting && !draftMessage.trim()}
+              onClick={isSubmitting ? handleStop : undefined}
+              className={classNames(
+                'inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 disabled:translate-y-0 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none',
+                isSubmitting
+                  ? 'bg-rose-600 shadow-rose-200 hover:bg-rose-700 focus-visible:outline-rose-600'
+                  : 'bg-blue-600 shadow-blue-200 hover:bg-blue-700 focus-visible:outline-blue-600',
+              )}
             >
-              <span>{isSubmitting ? 'Sending…' : 'Send'}</span>
+              <span>{isSubmitting ? 'Stop' : 'Send'}</span>
               <svg
                 className="size-4"
                 viewBox="0 0 20 20"
                 fill="none"
                 aria-hidden="true"
               >
-                <path
-                  d="m17 3-6.2 14-2.2-5.6L3 9.2 17 3Z"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="m8.6 11.4 3.3-3.3"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
+                {isSubmitting ? (
+                  <rect
+                    x="5"
+                    y="5"
+                    width="10"
+                    height="10"
+                    rx="1.5"
+                    fill="currentColor"
+                  />
+                ) : (
+                  <>
+                    <path
+                      d="m17 3-6.2 14-2.2-5.6L3 9.2 17 3Z"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="m8.6 11.4 3.3-3.3"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
               </svg>
             </button>
           </div>

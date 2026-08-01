@@ -14,14 +14,14 @@ A production-oriented AI assistant for e-commerce businesses that helps customer
 
 ## Project status
 
-**Adversarial RAG evaluation in progress**
+**Streaming chat responses and cancellation in progress**
 
 The application now provides a full-stack chat experience, bounded multi-turn
 context, deterministic Markdown ingestion, OpenAI embeddings, Qdrant vector
 synchronization, semantic retrieval, grounded responses, safe source metadata,
-and a live retrieval evaluation suite. The current increment adds adversarial
-answer evaluation for grounding overrides, prompt injection, instruction
-extraction, and unsupported questions.
+and live retrieval and adversarial evaluation suites. The current increment
+streams generated text over NDJSON, renders replies progressively, and lets the
+user cancel an active response.
 
 See the [project plan](./PROJECT_PLAN.md) for the original milestone definitions,
 architecture, acceptance criteria, and delivery principles.
@@ -36,7 +36,7 @@ change.
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
 | 0. Repository foundation                 | Independently runnable Next.js and NestJS applications, environment protection, health checks, linting, tests, and builds                                | Complete    |
 | 1. Core AI chat                          | Validated chat endpoint, server-side OpenAI Responses API integration, safe errors, and responsive chat interface                                        | Complete    |
-| 2. Conversation experience               | Bounded multi-turn context is complete; streaming, cancellation, usage telemetry, and request-duration logging remain                                    | In progress |
+| 2. Conversation experience               | Bounded multi-turn context, streaming, and cancellation are complete; usage telemetry and request-duration logging remain                                | In progress |
 | 3. Knowledge-base ingestion              | Version-controlled Markdown loading, deterministic chunking and hashing, embeddings, idempotent Qdrant synchronization, and stale-vector deletion        | Complete    |
 | 4. Grounded semantic retrieval           | Query embeddings, thresholded vector search, validated context, honest fallback behavior, and live retrieval evaluation                                  | Complete    |
 | 5. Source transparency                   | Return safe source metadata with grounded responses and display accessible source cards in the chat UI                                                   | Complete    |
@@ -60,10 +60,8 @@ flowchart LR
     end
 
     subgraph Active["Current development"]
-        P2["2 · Conversation experience<br/>Context complete<br/>Streaming, cancellation, and telemetry remaining"]
-        SEC["Adversarial RAG evaluation<br/>Issue #24"]
+        P2["2 · Conversation experience<br/>Streaming and cancellation<br/>Issue #26"]
 
-        P5 --> SEC
         P1 --> P2
     end
 
@@ -78,14 +76,14 @@ flowchart LR
         P6 --> P7 --> P8 --> P9 --> P10 --> P11
     end
 
-    SEC --> P6
+    P5 --> P6
     P2 --> P6
 ```
 
 ### Immediate next steps
 
-1. Complete adversarial RAG and prompt-injection evaluation for issue #24.
-2. Finish streaming, cancellation, and request telemetry.
+1. Complete streaming chat responses and cancellation for issue #26.
+2. Add usage telemetry and request-duration logging.
 3. Implement structured support classification and draft generation.
 
 ## Repository structure
@@ -181,21 +179,16 @@ npm run dev:api
 
 The API health endpoint is available at `http://localhost:3001/api/health`.
 
-Grounded chat responses include safe source metadata:
+The chat endpoint returns newline-delimited JSON. Text arrives in `delta`
+events, followed by one `complete` event containing safe source metadata:
 
-```json
-{
-  "reply": "Standard shipping takes 3–7 business days after dispatch.",
-  "sources": [
-    {
-      "documentTitle": "Shipping Policy",
-      "sectionTitle": "Delivery options",
-      "sourcePath": "policies/shipping.md"
-    }
-  ]
-}
+```jsonl
+{"type":"delta","text":"Standard shipping takes "}
+{"type":"delta","text":"3–7 business days after dispatch."}
+{"type":"complete","sources":[{"documentTitle":"Shipping Policy","sectionTitle":"Delivery options","sourcePath":"policies/shipping.md"}]}
 ```
 
+If generation fails after streaming begins, the final event has type `error`.
 The API does not return retrieved content, embeddings, similarity scores,
 content hashes, vector point IDs, or vector-database details.
 
@@ -211,10 +204,12 @@ Useful breakpoints for following the grounded chat flow are:
 
 - `ChatController.chat`
 - `ChatService.processMessage`
+- `ChatService.streamMessage`
 - `KnowledgeBaseRetrievalService.retrieve`
 - `OpenAIEmbeddingService.generateEmbeddings`
 - `QdrantService.search`
 - `OpenAIService.generateResponse`
+- `OpenAIService.streamResponse`
 
 To start the debuggable process separately:
 

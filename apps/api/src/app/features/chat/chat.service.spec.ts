@@ -8,10 +8,15 @@ describe('ChatService', () => {
   let testingModule: TestingModule;
 
   const generateResponseMock = jest.fn();
+  const streamResponseMock = jest.fn();
   const retrieveMock = jest.fn();
 
   beforeEach(async () => {
     generateResponseMock.mockResolvedValue('Your order is being processed.');
+    streamResponseMock.mockImplementation(async function* () {
+      yield 'Your order ';
+      yield 'is being processed.';
+    });
     retrieveMock.mockResolvedValue([
       {
         id: 'chunk-id',
@@ -33,6 +38,7 @@ describe('ChatService', () => {
           provide: AiApiService,
           useValue: {
             generateResponse: generateResponseMock,
+            streamResponse: streamResponseMock,
           },
         },
         {
@@ -206,5 +212,84 @@ describe('ChatService', () => {
         },
       ]),
     ).rejects.toBe(error);
+  });
+
+  it('streams generated deltas followed by final source metadata', async () => {
+    const messages = [
+      {
+        content: 'Where is my order?',
+        role: 'user' as const,
+      },
+    ];
+    const abortController = new AbortController();
+    const events = [];
+
+    for await (const event of service.streamMessage(
+      messages,
+      abortController.signal,
+    )) {
+      events.push(event);
+    }
+
+    expect(streamResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: [
+          {
+            role: 'user',
+            content: expect.stringContaining(
+              '"content":"Customers can track shipped orders using the tracking link."',
+            ),
+          },
+          ...messages,
+        ],
+      }),
+      abortController.signal,
+    );
+    expect(events).toEqual([
+      {
+        type: 'delta',
+        text: 'Your order ',
+      },
+      {
+        type: 'delta',
+        text: 'is being processed.',
+      },
+      {
+        type: 'complete',
+        sources: [
+          {
+            documentTitle: 'Order Tracking',
+            sectionTitle: 'Tracking an order',
+            sourcePath: 'guides/order-tracking.md',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('streams the honest fallback without calling the AI API', async () => {
+    retrieveMock.mockResolvedValueOnce([]);
+    const events = [];
+
+    for await (const event of service.streamMessage([
+      {
+        content: 'Do you accept Bitcoin?',
+        role: 'user',
+      },
+    ])) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: 'delta',
+        text: "I'm sorry, but the available store knowledge does not contain enough information to answer that question.",
+      },
+      {
+        type: 'complete',
+        sources: [],
+      },
+    ]);
+    expect(streamResponseMock).not.toHaveBeenCalled();
   });
 });

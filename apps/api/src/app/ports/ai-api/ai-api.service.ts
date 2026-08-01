@@ -13,4 +13,9 @@ export abstract class AiApiService {
   abstract generateResponse(
     request: GenerateAiResponseRequest,
   ): Promise<string>;
+
+  abstract streamResponse(
+    request: GenerateAiResponseRequest,
+    signal?: AbortSignal,
+  ): AsyncIterable<string>;
 }
